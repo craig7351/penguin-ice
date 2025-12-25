@@ -99,7 +99,7 @@ window.addEventListener('pointerdown', (event) => {
       const hitObject = intersects[0].object;
       const block = board.getBlockFromMesh(hitObject);
       if (block && !block.isFalling) {
-        block.hit();
+        board.breakBlock(block);
         soundManager.playBreakSound();
         nextTurn();
       }

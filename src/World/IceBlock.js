@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
 export class IceBlock {
-    constructor(x, z) {
+    constructor(x, z, q, r) {
+        this.q = q;
+        this.r = r;
         this.startPosition = new THREE.Vector3(x, 0, z);
 
         // Ice Material
