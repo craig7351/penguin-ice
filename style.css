@@ -17,6 +17,46 @@ body {
   z-index: 10;
 }
 
+#start-screen {
+  background: rgba(255, 255, 255, 0.9);
+  padding: 3rem;
+  border-radius: 20px;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+input {
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  font-size: 1rem;
+}
+
+#hud {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #0077ff;
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
 #game-over {
   background: rgba(255, 255, 255, 0.8);
   padding: 2rem;
@@ -36,7 +76,7 @@ body {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 h1 {
