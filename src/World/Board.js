@@ -10,6 +10,12 @@ export class Board {
         this.gridSize = 3;
         this.penguin = null;
         this.gameOver = false;
+
+        // Directions for neighbor lookup
+        this.directions = [
+            { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
+            { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
+        ];
     }
 
     createGrid() {
@@ -34,45 +40,126 @@ export class Board {
     addBlock(x, z, q, r) {
         const block = new IceBlock(x, z, q, r);
 
-        // Add Random Friction (0.5 to 1.0)
-        // Higher friction = harder to slip
-        block.friction = 0.5 + Math.random() * 0.5;
+        // Initial Friction (0.8 default)
+        block.friction = 0.8;
+        // Small random offset +/- 0.05
+        block.friction += (Math.random() * 0.1 - 0.05);
 
         this.scene.add(block.mesh);
         this.blocks.push(block);
         this.blockMap.set(`${q},${r}`, block);
     }
 
+    setGlobalFriction(value) {
+        this.blocks.forEach(block => {
+            // Apply new base friction + keep random variance
+            // Note: Currently we just reset variance or keep old?
+            // Let's generate new variance to be simple
+            block.friction = value + (Math.random() * 0.1 - 0.05);
+        });
+    }
+
     getBlockFromMesh(mesh) {
         return this.blocks.find(block => block.mesh === mesh);
     }
 
-    breakBlock(block) {
-        if (!block || block.isFalling) return;
-
-        block.hit();
-
-        // Iteratively check physics until stable
-        let unstable = true;
-        let iteration = 0;
-
-        while (unstable && iteration < 10) {
-            unstable = false;
-
-            // 1. Check Hard Connectivity (BFS to Anchors)
-            const changesBFS = this.checkConnectivity();
-
-            // 2. Check Structural Stress (Friction/Neighbors)
-            const changesStress = this.checkStructuralStress();
-
-            if (changesBFS || changesStress) {
-                unstable = true;
+    getNeighbors(block) {
+        const neighbors = [];
+        for (const dir of this.directions) {
+            const key = `${block.q + dir.q},${block.r + dir.r}`;
+            const neighbor = this.blockMap.get(key);
+            if (neighbor && !neighbor.isFalling) {
+                neighbors.push(neighbor);
             }
+        }
+        return neighbors;
+    }
+
+    // Call this when a block is clicked
+    breakBlock(initialBlock) {
+        if (!initialBlock || initialBlock.isFalling) return;
+
+        initialBlock.hit();
+
+        // Queue of blocks that need to be checked for stability
+        // Initialize with neighbors of the broken block
+        let checkQueue = this.getNeighbors(initialBlock);
+
+        // To prevent infinite re-checking in same frame, though state change prevents it
+        // We use an iterative approach to propagate changes
+
+        let iteration = 0;
+        const maxIterations = 20;
+
+        while ((checkQueue.length > 0) && iteration < maxIterations) {
             iteration++;
+            const nextQueue = [];
+            const processedKeys = new Set();
+
+            // 1. Stress Check (Probabilistic Friction Check) specific to queue
+            checkQueue.forEach(block => {
+                if (block.isFalling) return;
+                if (processedKeys.has(`${block.q},${block.r}`)) return;
+                processedKeys.add(`${block.q},${block.r}`);
+
+                const neighbors = this.countActiveNeighbors(block);
+
+                // Probability logic...
+                let fallChance = 0;
+                if (neighbors >= 4) {
+                    fallChance = 0;
+                } else if (neighbors === 3) {
+                    fallChance = 0.2; // Reduced probability
+                } else if (neighbors === 2) {
+                    fallChance = 0.5;
+                } else if (neighbors <= 1) {
+                    fallChance = 0.9;
+                }
+
+                // Modify by friction
+                fallChance = fallChance * (1.2 - block.friction);
+
+                if (Math.random() < fallChance) {
+                    block.hit();
+                    // Add its neighbors to next queue
+                    const myNeighbors = this.getNeighbors(block);
+                    myNeighbors.forEach(nb => nextQueue.push(nb));
+                }
+            });
+
+            // 2. Global Connectivity (Islands)
+            // If any blocks fell, we must ensure no floating islands exist.
+            // This is deterministic. If an island is created, it MUST fall.
+            // We run this every iteration if needed, OR just once at end?
+            // Better to run it, because a falling block from Stress might create an island.
+            const fallenFromConnectivity = this.checkConnectivity();
+
+            if (fallenFromConnectivity.length > 0) {
+                fallenFromConnectivity.forEach(block => {
+                    // Add their neighbors to next queue for stress check
+                    const myNeighbors = this.getNeighbors(block);
+                    myNeighbors.forEach(nb => nextQueue.push(nb));
+                });
+            }
+
+            // Deduplicate nextQueue
+            checkQueue = [...new Set(nextQueue)];
         }
     }
 
-    // Returns true if any block fell
+    countActiveNeighbors(block) {
+        let count = 0;
+        for (const dir of this.directions) {
+            const key = `${block.q + dir.q},${block.r + dir.r}`;
+            const neighbor = this.blockMap.get(key);
+            if (neighbor && !neighbor.isFalling) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // Returns array of blocks that fell due to disconnectedness
     checkConnectivity() {
         const visited = new Set();
         const queue = [];
@@ -89,20 +176,13 @@ export class Board {
         });
 
         // 2. BFS
-        const directions = [
-            { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
-            { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
-        ];
-
         let head = 0;
         while (head < queue.length) {
             const current = queue[head++];
-
-            for (const dir of directions) {
+            for (const dir of this.directions) {
                 const nq = current.q + dir.q;
                 const nr = current.r + dir.r;
                 const key = `${nq},${nr}`;
-
                 const neighbor = this.blockMap.get(key);
                 if (neighbor && !neighbor.isFalling && !visited.has(key)) {
                     visited.add(key);
@@ -111,94 +191,19 @@ export class Board {
             }
         }
 
-        // 3. Mark disconnected blocks as falling
-        let changed = false;
+        // 3. Any non-falling block NOT visited is an island
+        const fellBlocks = [];
         this.blocks.forEach(block => {
             if (!block.isFalling) {
                 const key = `${block.q},${block.r}`;
                 if (!visited.has(key)) {
                     block.hit();
-                    changed = true;
+                    fellBlocks.push(block);
                 }
             }
         });
 
-        return changed;
-    }
-
-    // Returns true if any block fell
-    checkStructuralStress() {
-        let changed = false;
-
-        const directions = [
-            { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
-            { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
-        ];
-
-        this.blocks.forEach(block => {
-            if (!block.isFalling) {
-                // Count active neighbors
-                let neighbors = 0;
-                for (const dir of directions) {
-                    const key = `${block.q + dir.q},${block.r + dir.r}`;
-                    const neighbor = this.blockMap.get(key);
-                    if (neighbor && !neighbor.isFalling) {
-                        neighbors++;
-                    }
-                }
-
-                // Probability Check
-                // User requirement: "Maybe fall if 3 touching"
-
-                // Logic:
-                // Neighbors 6, 5, 4: Very Stable (Will not fall due to friction usually)
-                // Neighbors 3: Unstable. Chance to fall.
-                // Neighbors 2: Very Unstable.
-                // Neighbors 1: Almost certain fall.
-                // Neighbors 0: (Covered by BFS usually, but handled here too)
-
-                let stabilityScore = 1.0;
-
-                if (neighbors >= 4) {
-                    stabilityScore = 1.0;
-                } else if (neighbors === 3) {
-                    stabilityScore = 0.6; // 60% base stability
-                } else if (neighbors === 2) {
-                    stabilityScore = 0.3; // 30% base stability
-                } else if (neighbors <= 1) {
-                    stabilityScore = 0.0; // 0% base
-                }
-
-                // Final Check: Stability + Friction vs Random
-                // block.friction is 0.5 ~ 1.0
-                // We want:
-                // IF (Stability * Friction) < RandomThreshold -> Fall
-                // Let's simpler: Fall Probability
-
-                let fallChance = 0;
-                if (neighbors === 3) fallChance = 0.3; // 30% chance
-                if (neighbors === 2) fallChance = 0.7; // 70% chance
-                if (neighbors <= 1) fallChance = 0.95; // 95% chance
-
-                // Friction reduces fall chance
-                // newChance = fallChance * (1 - friction_factor)
-                // If friction is high (1.0), chance becomes 0? No, high friction means sticky.
-                // Let's say friction 1.0 reduces chance by 50%.
-
-                // Adjust chance by friction (invserse)
-                // Higher friction = Lower chance
-                // Factor: (1.2 - block.friction) -> if friction 1.0, factor 0.2. if friction 0.5, factor 0.7
-                fallChance = fallChance * (1.5 - block.friction);
-
-                if (Math.random() < fallChance) {
-                    block.hit();
-                    changed = true;
-                    // console.log(`Block at ${block.q},${block.r} slipped! (Neighbors: ${neighbors}, Friction: ${block.friction.toFixed(2)})`);
-                }
-            }
-        });
-
-        return changed;
+        return fellBlocks;
     }
 
     update() {
@@ -209,7 +214,6 @@ export class Board {
             // Check if penguin should fall
             if (!this.gameOver && !this.penguin.isFalling) {
                 const centerBlock = this.blockMap.get("0,0");
-
                 if (!centerBlock || centerBlock.isFalling) {
                     this.penguin.isFalling = true;
                     this.gameOver = true;

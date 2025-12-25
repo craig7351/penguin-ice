@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Board } from './World/Board.js';
 import { SoundManager } from './SoundManager.js';
 import '../style.css';
@@ -15,6 +16,15 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
+
+// Controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.mouseButtons = {
+  LEFT: null, // Disable rotation on left click (reserved for game interaction)
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.ROTATE
+};
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -49,6 +59,15 @@ const turnIndicator = document.getElementById('turn-indicator');
 const gameOverEl = document.getElementById('game-over');
 const gameOverText = document.getElementById('game-over-text');
 const restartBtn = document.getElementById('restart-btn');
+const frictionSlider = document.getElementById('friction-slider');
+const frictionValue = document.getElementById('friction-value');
+
+// Input Binding
+frictionSlider.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  frictionValue.textContent = val;
+  board.setGlobalFriction(val);
+});
 
 // Start Game Logic
 startBtn.addEventListener('click', () => {
@@ -82,6 +101,9 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 window.addEventListener('pointerdown', (event) => {
+  // Only allow Left Click (0) for game interaction
+  if (event.button !== 0) return;
+
   // Resume audio context
   if (soundManager.ctx.state === 'suspended') {
     soundManager.ctx.resume();
@@ -110,6 +132,7 @@ window.addEventListener('pointerdown', (event) => {
 // Animation Loop
 function animate() {
   requestAnimationFrame(animate);
+  controls.update();
   board.update();
   renderer.render(scene, camera);
 }

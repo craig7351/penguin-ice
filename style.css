@@ -55,6 +55,28 @@ input {
   color: #0077ff;
   backdrop-filter: blur(5px);
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+#friction-control {
+  pointer-events: auto;
+  /* Enable interaction for slider */
+  font-size: 1rem;
+  color: #333;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+#friction-control input {
+  width: 100%;
+  cursor: pointer;
+  padding: 0;
+  border: none;
 }
 
 #game-over {
