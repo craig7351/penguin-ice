@@ -1,20 +1,36 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>penguin-ice</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <div id="ui-layer">
-        <div id="game-over" class="hidden">
-            <h1>Game Over!</h1>
-            <p>Penguin Fell!</p>
-            <button id="restart-btn">Restart</button>
-        </div>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>penguin-ice</title>
+</head>
+
+<body>
+  <div id="app"></div>
+  <div id="ui-layer">
+    <div id="start-screen">
+      <h1>Penguin Ice Bricks</h1>
+      <div class="input-group">
+        <input type="text" id="player1-name" placeholder="Player A Name" value="Player A">
+        <input type="text" id="player2-name" placeholder="Player B Name" value="Player B">
+      </div>
+      <button id="start-btn">Start Game</button>
     </div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+
+    <div id="hud" class="hidden">
+      <div id="turn-indicator">Turn: Player A</div>
+    </div>
+
+    <div id="game-over" class="hidden">
+      <h1>Game Over!</h1>
+      <p id="game-over-text">Penguin Fell!</p>
+      <button id="restart-btn">Restart</button>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+
 </html>

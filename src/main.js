@@ -32,6 +32,51 @@ const soundManager = new SoundManager();
 const board = new Board(scene);
 board.createGrid();
 
+// Game State
+let gameState = {
+  active: false,
+  players: ['', ''],
+  currentTurn: 0 // 0 for Player 1, 1 for Player 2
+};
+
+// UI Elements
+const startScreen = document.getElementById('start-screen');
+const startBtn = document.getElementById('start-btn');
+const p1Input = document.getElementById('player1-name');
+const p2Input = document.getElementById('player2-name');
+const hud = document.getElementById('hud');
+const turnIndicator = document.getElementById('turn-indicator');
+const gameOverEl = document.getElementById('game-over');
+const gameOverText = document.getElementById('game-over-text');
+const restartBtn = document.getElementById('restart-btn');
+
+// Start Game Logic
+startBtn.addEventListener('click', () => {
+  gameState.players[0] = p1Input.value || 'Player A';
+  gameState.players[1] = p2Input.value || 'Player B';
+
+  gameState.active = true;
+  gameState.currentTurn = 0;
+
+  startScreen.classList.add('hidden');
+  hud.classList.remove('hidden');
+  updateTurnUI();
+
+  if (soundManager.ctx.state === 'suspended') {
+    soundManager.ctx.resume();
+  }
+});
+
+function updateTurnUI() {
+  const player = gameState.players[gameState.currentTurn];
+  turnIndicator.textContent = `Turn: ${player}`;
+}
+
+function nextTurn() {
+  gameState.currentTurn = (gameState.currentTurn + 1) % 2;
+  updateTurnUI();
+}
+
 // Raycaster for interaction
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -50,11 +95,14 @@ window.addEventListener('pointerdown', (event) => {
   const intersects = raycaster.intersectObjects(scene.children);
 
   if (intersects.length > 0) {
-    const hitObject = intersects[0].object;
-    const block = board.getBlockFromMesh(hitObject);
-    if (block) {
-      block.hit();
-      soundManager.playBreakSound();
+    if (gameState.active) {
+      const hitObject = intersects[0].object;
+      const block = board.getBlockFromMesh(hitObject);
+      if (block && !block.isFalling) {
+        block.hit();
+        soundManager.playBreakSound();
+        nextTurn();
+      }
     }
   }
 });
@@ -74,16 +122,32 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Game Over UI logic
-const gameOverEl = document.getElementById('game-over');
-const restartBtn = document.getElementById('restart-btn');
-
 window.addEventListener('gameover', () => {
+  gameState.active = false;
   soundManager.playGameOverSound();
+
+  // Who lost? The player who just moved (currentTurn was switched AFTER move, wait...)
+  // Logic: Player clicks -> Block falls -> nextTurn().
+  // Penguin falls later.
+  // The player whose turn it currently is? 
+  // Wait, usually the penguin falls BECAUSE of the last move.
+  // So the player who made the last move lost.
+  // My nextTurn() switches turn IMMEDIATELY after click.
+  // So if Player A clicks -> Turn becomes Player B -> Penguin falls.
+  // Then the LOSER is Player A (who moved last).
+  // The WINNER is Player B (current turn).
+
+  const winnerIndex = gameState.currentTurn; // Since turn switched, current is the one who didn't break it
+  const winner = gameState.players[winnerIndex];
+  const loser = gameState.players[(winnerIndex + 1) % 2];
+
+  gameOverText.textContent = `${loser} 讓企鵝掉下去了！\n${winner} 獲勝！`;
+
   gameOverEl.classList.remove('hidden');
   // Force reflow
   void gameOverEl.offsetWidth;
   gameOverEl.classList.add('visible');
+  hud.classList.add('hidden');
 });
 
 restartBtn.addEventListener('click', () => {
