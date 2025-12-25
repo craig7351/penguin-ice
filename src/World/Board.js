@@ -33,6 +33,11 @@ export class Board {
 
     addBlock(x, z, q, r) {
         const block = new IceBlock(x, z, q, r);
+
+        // Add Random Friction (0.5 to 1.0)
+        // Higher friction = harder to slip
+        block.friction = 0.5 + Math.random() * 0.5;
+
         this.scene.add(block.mesh);
         this.blocks.push(block);
         this.blockMap.set(`${q},${r}`, block);
@@ -42,32 +47,39 @@ export class Board {
         return this.blocks.find(block => block.mesh === mesh);
     }
 
-    // Call this when a block is clicked
     breakBlock(block) {
         if (!block || block.isFalling) return;
 
         block.hit();
 
-        // Check structural integrity
-        this.checkStability();
+        // Iteratively check physics until stable
+        let unstable = true;
+        let iteration = 0;
+
+        while (unstable && iteration < 10) {
+            unstable = false;
+
+            // 1. Check Hard Connectivity (BFS to Anchors)
+            const changesBFS = this.checkConnectivity();
+
+            // 2. Check Structural Stress (Friction/Neighbors)
+            const changesStress = this.checkStructuralStress();
+
+            if (changesBFS || changesStress) {
+                unstable = true;
+            }
+            iteration++;
+        }
     }
 
-    checkStability() {
-        // BFS to find all blocks connected to the "frame" (edge blocks)
+    // Returns true if any block fell
+    checkConnectivity() {
         const visited = new Set();
         const queue = [];
 
-        // 1. Identify Anchor Blocks (neighbors of the virtual boundary)
-        // Actually, let's treat any block with max coordinate magnitude == gridSize as an anchor?
-        // Or simpler: Any block that is NOT falling is a candidate.
-        // But we need a source of stability.
-        // Let's assume the outer ring (q, r distance from 0 is gridSize) is attached to the wall.
-
+        // 1. Identify Anchor Blocks (Outer Ring)
         this.blocks.forEach(block => {
             if (!block.isFalling) {
-                // Distance in axial coords is max(|q|, |r|, |q+r|)
-                // But simplified: Outer ring logic
-                // If it's on the edge of the board, it's an anchor.
                 const dist = Math.max(Math.abs(block.q), Math.abs(block.r), Math.abs(block.q + block.r));
                 if (dist === this.gridSize) {
                     queue.push(block);
@@ -99,19 +111,94 @@ export class Board {
             }
         }
 
-        // 3. Any non-falling block NOT visited must fall
-        let anyNewFall = false;
+        // 3. Mark disconnected blocks as falling
+        let changed = false;
         this.blocks.forEach(block => {
             if (!block.isFalling) {
                 const key = `${block.q},${block.r}`;
                 if (!visited.has(key)) {
-                    block.hit(); // Make it fall physics-wise
-                    anyNewFall = true;
+                    block.hit();
+                    changed = true;
                 }
             }
         });
 
-        // If blocks fell, we might want to sound effect? handled by block.hit()
+        return changed;
+    }
+
+    // Returns true if any block fell
+    checkStructuralStress() {
+        let changed = false;
+
+        const directions = [
+            { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
+            { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
+        ];
+
+        this.blocks.forEach(block => {
+            if (!block.isFalling) {
+                // Count active neighbors
+                let neighbors = 0;
+                for (const dir of directions) {
+                    const key = `${block.q + dir.q},${block.r + dir.r}`;
+                    const neighbor = this.blockMap.get(key);
+                    if (neighbor && !neighbor.isFalling) {
+                        neighbors++;
+                    }
+                }
+
+                // Probability Check
+                // User requirement: "Maybe fall if 3 touching"
+
+                // Logic:
+                // Neighbors 6, 5, 4: Very Stable (Will not fall due to friction usually)
+                // Neighbors 3: Unstable. Chance to fall.
+                // Neighbors 2: Very Unstable.
+                // Neighbors 1: Almost certain fall.
+                // Neighbors 0: (Covered by BFS usually, but handled here too)
+
+                let stabilityScore = 1.0;
+
+                if (neighbors >= 4) {
+                    stabilityScore = 1.0;
+                } else if (neighbors === 3) {
+                    stabilityScore = 0.6; // 60% base stability
+                } else if (neighbors === 2) {
+                    stabilityScore = 0.3; // 30% base stability
+                } else if (neighbors <= 1) {
+                    stabilityScore = 0.0; // 0% base
+                }
+
+                // Final Check: Stability + Friction vs Random
+                // block.friction is 0.5 ~ 1.0
+                // We want:
+                // IF (Stability * Friction) < RandomThreshold -> Fall
+                // Let's simpler: Fall Probability
+
+                let fallChance = 0;
+                if (neighbors === 3) fallChance = 0.3; // 30% chance
+                if (neighbors === 2) fallChance = 0.7; // 70% chance
+                if (neighbors <= 1) fallChance = 0.95; // 95% chance
+
+                // Friction reduces fall chance
+                // newChance = fallChance * (1 - friction_factor)
+                // If friction is high (1.0), chance becomes 0? No, high friction means sticky.
+                // Let's say friction 1.0 reduces chance by 50%.
+
+                // Adjust chance by friction (invserse)
+                // Higher friction = Lower chance
+                // Factor: (1.2 - block.friction) -> if friction 1.0, factor 0.2. if friction 0.5, factor 0.7
+                fallChance = fallChance * (1.5 - block.friction);
+
+                if (Math.random() < fallChance) {
+                    block.hit();
+                    changed = true;
+                    // console.log(`Block at ${block.q},${block.r} slipped! (Neighbors: ${neighbors}, Friction: ${block.friction.toFixed(2)})`);
+                }
+            }
+        });
+
+        return changed;
     }
 
     update() {
@@ -121,7 +208,6 @@ export class Board {
 
             // Check if penguin should fall
             if (!this.gameOver && !this.penguin.isFalling) {
-                // Penguin is at 0,0. Check block at 0,0.
                 const centerBlock = this.blockMap.get("0,0");
 
                 if (!centerBlock || centerBlock.isFalling) {
